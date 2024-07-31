@@ -1,3 +1,6 @@
+use std::net::TcpStream;
+use std::io::Write;
+
 pub enum Command<'a> {
 	SetNickname(&'a str),
 	SetUser(&'a str),
@@ -12,4 +15,8 @@ impl Command<'_> {
 			Command::JoinChannel(s) => format!("JOIN {}\r\n", s)
 		};
 	}
+}
+
+pub fn send_command(mut stream: &TcpStream, command: Command) {
+    stream.write_all(command.to_string().as_bytes()).expect(format!("Failed to write bytes to {}", stream.peer_addr().unwrap()).as_str());
 }

@@ -1,5 +1,5 @@
 mod commands;
-use commands::Command;
+use commands::{Command, send_command};
 use std::net::{TcpStream, ToSocketAddrs, Shutdown};
 use std::io::{self, Write, BufRead, BufReader};
 
@@ -14,27 +14,28 @@ fn get_input(question: &str) -> String {
     return buffer;
 }
 
-fn send_command(mut stream: &TcpStream, command: Command) {
-    let _ = stream.write_all(command.to_string().as_bytes());
+fn is_input_empty(input: &str) -> bool {
+    let first_char: Option<char> = input.chars().nth(0);
+    return input.is_empty() || first_char.unwrap() == '\r' || first_char.unwrap() == '\n';
 }
 
 fn main() -> std::io::Result<()> {
     let domain: String = {
         let mut input: String = get_input("Domain (chat.freenode.net:6667): ");
-        
-        if input.is_empty() {
+
+        if is_input_empty(input.as_str()) {
             input = String::from("chat.freenode.net:6667");
         }
 
         input
     };
-    
+  
     let domain: &str = domain.as_str().trim();
     
     let nick: String = {
         let mut input: String = String::new();
 
-        while input.is_empty() {
+        while is_input_empty(input.as_str()) {
             input = get_input("Nickname: ");
         }
 
@@ -42,6 +43,18 @@ fn main() -> std::io::Result<()> {
     };
     
     let nick: &str = nick.as_str().trim();
+
+    let channel: String = {
+        let mut input: String = String::new();
+
+        while is_input_empty(input.as_str()) {
+            input = get_input("Channel: ");
+        }
+
+        input
+    };
+
+    let channel: &str = channel.as_str().trim();
     
     let addrs = domain.to_socket_addrs().expect("Unable to resolve domain");
     let mut maybe_stream: Option<TcpStream> = None;
@@ -72,7 +85,7 @@ fn main() -> std::io::Result<()> {
 
     send_command(&stream, Command::SetNickname(nick));
     send_command(&stream, Command::SetUser(nick));
-    send_command(&stream, Command::JoinChannel("freenode"));
+    send_command(&stream, Command::JoinChannel(channel));
 
     let mut reader = BufReader::new(&stream);
     let mut buffer = String::new();
