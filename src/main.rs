@@ -2,6 +2,8 @@ mod commands;
 use commands::{Command, send_command};
 use std::net::{TcpStream, ToSocketAddrs, Shutdown};
 use std::io::{self, Write, BufRead, BufReader};
+use std::thread;
+use std::sync::{Arc, Mutex};
 
 fn get_input(question: &str) -> String {
     let mut buffer = String::new();
@@ -54,7 +56,7 @@ fn main() -> std::io::Result<()> {
         input
     };
 
-    let channel: &str = channel.as_str().trim();
+    let channel: &'static str = String::leak(channel).trim();
     
     let addrs = domain.to_socket_addrs().expect("Unable to resolve domain");
     let mut maybe_stream: Option<TcpStream> = None;
@@ -87,16 +89,47 @@ fn main() -> std::io::Result<()> {
     send_command(&stream, Command::SetUser(nick));
     send_command(&stream, Command::JoinChannel(channel));
 
-    let mut reader = BufReader::new(&stream);
-    let mut buffer = String::new();
+    let stream: Arc<Mutex<TcpStream>> = Arc::new(Mutex::new(stream));
 
-    while reader.read_line(&mut buffer)? > 0 {
-        println!("{}", buffer.trim_end());
-        buffer.clear();
-    }
+    let stream_mutex: Arc<Mutex<TcpStream>> = Arc::clone(&stream);
+    let reciever_thread: thread::JoinHandle<()> = thread::spawn(move || {
+        let mut guard = stream_mutex.lock().unwrap();
+        let mut reader = BufReader::new(&*guard);
+        let mut buffer = String::new();
+
+        while reader.read_line(&mut buffer).unwrap() > 0 {
+            drop(reader);
+            drop(guard);
+            
+            println!("{}", buffer.trim_end());
+            buffer.clear();
+            
+            guard = stream_mutex.lock().unwrap();
+            reader = BufReader::new(&*guard);
+        }
+    });
+
+    let stream_mutex_: Arc<Mutex<TcpStream>> = Arc::clone(&stream);
+    let sender_thread: thread::JoinHandle<()> = thread::spawn(move || {
+        let mut buffer = String::new();
+
+        loop {
+            io::stdin().read_line(&mut buffer).expect("Failed to read stdin");
+            
+            if !is_input_empty(buffer.as_str()) {
+                let guard = stream_mutex_.lock().unwrap();
+                send_command(&*guard, Command::SendMessageToChannel(channel, buffer.as_str().trim_end()));
+            }
+            
+            buffer.clear();
+        }
+    });
+    
+    reciever_thread.join().expect("Could not join with the reciever thread");
+    sender_thread.join().expect("Could not join with sender thread");
 
     println!("Shutting down connection");
-    stream.shutdown(Shutdown::Both).expect("TCP Connection shutdown failed");
+    stream.lock().unwrap().shutdown(Shutdown::Both).expect("TCP Connection shutdown failed");
     
     Ok(())
 }

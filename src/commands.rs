@@ -4,7 +4,8 @@ use std::io::Write;
 pub enum Command<'a> {
 	SetNickname(&'a str),
 	SetUser(&'a str),
-	JoinChannel(&'a str)
+	JoinChannel(&'a str),
+	SendMessageToChannel(&'a str, &'a str),
 }
 
 impl Command<'_> {
@@ -12,7 +13,8 @@ impl Command<'_> {
 		return match self {
 			Command::SetNickname(s) => format!("NICK {}\r\n", s),
 			Command::SetUser(s) => format!("USER guest 0 * :{}\r\n", s),
-			Command::JoinChannel(s) => format!("JOIN {}\r\n", s)
+			Command::JoinChannel(s) => format!("JOIN #{}\r\n", s),
+			Command::SendMessageToChannel(channel, msg) => format!("PRIVMSG #{} :{}\r\n", channel, msg)
 		};
 	}
 }

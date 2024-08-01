@@ -1,2 +1,1 @@
-- Connect to IRC Server and output reply
--
+- Respond to PING with PONG
