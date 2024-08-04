@@ -3,7 +3,7 @@ use commands::{Command, send_command};
 use std::net::{TcpStream, ToSocketAddrs, Shutdown};
 use std::io::{self, Write, BufRead, BufReader};
 use std::thread;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 fn get_input(question: &str) -> String {
     let mut buffer = String::new();
@@ -89,27 +89,20 @@ fn main() -> std::io::Result<()> {
     send_command(&stream, Command::SetUser(nick));
     send_command(&stream, Command::JoinChannel(channel));
 
-    let stream: Arc<Mutex<TcpStream>> = Arc::new(Mutex::new(stream));
+    let stream: Arc<TcpStream> = Arc::new(stream);
 
-    let stream_mutex: Arc<Mutex<TcpStream>> = Arc::clone(&stream);
+    let stream_ref: Arc<TcpStream> = Arc::clone(&stream);
     let reciever_thread: thread::JoinHandle<()> = thread::spawn(move || {
-        let mut guard = stream_mutex.lock().unwrap();
-        let mut reader = BufReader::new(&*guard);
+        let mut reader = BufReader::new(&*stream_ref);
         let mut buffer = String::new();
 
         while reader.read_line(&mut buffer).unwrap() > 0 {
-            drop(reader);
-            drop(guard);
-            
             println!("{}", buffer.trim_end());
             buffer.clear();
-            
-            guard = stream_mutex.lock().unwrap();
-            reader = BufReader::new(&*guard);
         }
     });
 
-    let stream_mutex_: Arc<Mutex<TcpStream>> = Arc::clone(&stream);
+    let stream_ref: Arc<TcpStream> = Arc::clone(&stream);
     let sender_thread: thread::JoinHandle<()> = thread::spawn(move || {
         let mut buffer = String::new();
 
@@ -117,8 +110,7 @@ fn main() -> std::io::Result<()> {
             io::stdin().read_line(&mut buffer).expect("Failed to read stdin");
             
             if !is_input_empty(buffer.as_str()) {
-                let guard = stream_mutex_.lock().unwrap();
-                send_command(&*guard, Command::SendMessageToChannel(channel, buffer.as_str().trim_end()));
+                send_command(&*stream_ref, Command::SendMessageToChannel(channel, buffer.as_str().trim_end()));
             }
             
             buffer.clear();
@@ -129,7 +121,8 @@ fn main() -> std::io::Result<()> {
     sender_thread.join().expect("Could not join with sender thread");
 
     println!("Shutting down connection");
-    stream.lock().unwrap().shutdown(Shutdown::Both).expect("TCP Connection shutdown failed");
+    //stream.lock().unwrap().shutdown(Shutdown::Both).expect("TCP Connection shutdown failed");    
+    (*stream).shutdown(Shutdown::Both).expect("TCP Connection shutdown failed");
     
     Ok(())
 }
